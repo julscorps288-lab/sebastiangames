@@ -34,7 +34,9 @@
     body {
       width: 100%;
       height: 100%;
+      height: 100dvh;
       overflow: hidden;
+      overscroll-behavior: none;
       background-color: var(--bg-dark);
       color: #fff;
     }
@@ -88,7 +90,7 @@
     .pl {
       display: inline-block;
       font-family: 'Anton', 'Impact', sans-serif;
-      font-size: clamp(3rem, min(13vw, 12dvh), 8.5rem);
+      font-size: clamp(2.15rem, min(11.5vw, 10.5dvh), 8.5rem);
       letter-spacing: 0.02em;
       color: transparent;
       background-size: cover;
@@ -672,6 +674,7 @@
       pointer-events: none;
       display: none;
       overflow: hidden;
+      background-color: var(--bg-dark);
       contain: layout style paint;
     }
 
@@ -792,7 +795,7 @@
     .gpl {
       display: inline-block;
       font-family: 'Anton', 'Impact', sans-serif;
-      font-size: clamp(2.1rem, min(7.8vw, 8.5dvh), 5.2rem);
+      font-size: clamp(1.65rem, min(7.4vw, 7.5dvh), 5.2rem);
       letter-spacing: 0.02em;
       color: transparent;
       background-size: cover;
@@ -820,6 +823,64 @@
 
       50% {
         translate: 0 -12px;
+      }
+    }
+
+    @media (max-width: 640px) {
+      .stage {
+        gap: clamp(0.2rem, 0.9dvh, 0.65rem);
+        padding: max(0.75rem, env(safe-area-inset-top)) 0.75rem max(1.6rem, env(safe-area-inset-bottom));
+      }
+
+      .heart-wrap {
+        width: min(74vw, 32dvh, 360px);
+      }
+
+      .galaxy-title {
+        top: max(1.25rem, calc(env(safe-area-inset-top) + 0.85rem));
+        width: 94vw;
+        column-gap: clamp(0.45rem, 1.8vw, 0.9rem);
+      }
+
+      .again-btn {
+        bottom: max(0.85rem, env(safe-area-inset-bottom));
+      }
+    }
+
+    @media (max-height: 520px) {
+      .stage {
+        gap: 0.15rem;
+        padding: max(0.4rem, env(safe-area-inset-top)) 0.75rem max(0.8rem, env(safe-area-inset-bottom));
+      }
+
+      .pl {
+        font-size: clamp(1.6rem, 9.5dvh, 3.2rem);
+      }
+
+      .heart-wrap {
+        width: min(36dvh, 200px);
+      }
+
+      #loveText {
+        width: min(44vw, 36dvh, 260px);
+      }
+
+      #nameText {
+        width: min(56vw, 48dvh, 340px);
+      }
+
+      .tap-btn {
+        margin-top: 0.25rem;
+        padding: 0.5rem 1.4rem;
+        min-height: 38px;
+      }
+
+      .galaxy-title {
+        top: max(0.55rem, env(safe-area-inset-top));
+      }
+
+      .gpl {
+        font-size: clamp(1.3rem, 7dvh, 2.6rem);
       }
     }
 
@@ -950,8 +1011,12 @@
     updateCamera();
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    function updateRendererSize() {
+      const maxDpr = window.innerWidth < 768 ? 1.35 : 2;
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, maxDpr));
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+    updateRendererSize();
     container.appendChild(renderer.domElement);
 
     const universeGroup = new THREE.Group();
@@ -1505,9 +1570,21 @@
     window.addEventListener('pointerup', () => { isDragging = false; });
     window.addEventListener('pointercancel', () => { isDragging = false; });
 
+    let bgFrameCount = 0;
+    const _galaxyCanvasRef = document.getElementById('galaxyCanvas');
+    const _gameOverlayRef = document.getElementById('gameOverlay');
+
     (function animate(now) {
       requestAnimationFrame(animate);
       if (document.hidden) return;
+      // Free 100% of WebGL GPU when Galaxy Finale (videos + 2D galaxy canvas) is active
+      if (_galaxyCanvasRef && _galaxyCanvasRef.style.display !== 'none') return;
+      bgFrameCount++;
+      // Throttle background 3D to 30fps on mobile while Shooter Mini-Game is active
+      if (window.innerWidth < 768 && _gameOverlayRef && _gameOverlayRef.style.display === 'block' && (bgFrameCount & 1)) {
+        return;
+      }
+
       const rm = reducedMotionQuery.matches;
       const timeSec = (now || performance.now()) * 0.001;
 
@@ -1539,7 +1616,7 @@
 
       renderer.render(scene, camera);
     })();
-    window.addEventListener('resize', () => { updateCamera(); renderer.setSize(window.innerWidth, window.innerHeight); });
+    window.addEventListener('resize', () => { updateCamera(); updateRendererSize(); });
 
     // ================= 2. PICTURE LETTERS =================
     const TITLE = "HAPPY 3RD MONTHSARY";
@@ -1744,9 +1821,10 @@
         'jasmine5.mp4', 'jasmine6.mp4', 'jasmine7.mp4'
       ];
 
+    // Smallest faststart videos first so mobile data starts playing immediately
     const MEM_FASTSTART_PRIORITY = [
-      'jasmine1.mp4', 'jasmine5.mp4', 'jasmine7.mp4',
-      'jasmine4.mp4', 'jasmine6.mp4', 'jasmine3.mp4', 'jasmine2.mp4'
+      'jasmine7.mp4', 'jasmine4.mp4', 'jasmine1.mp4',
+      'jasmine5.mp4', 'jasmine6.mp4', 'jasmine3.mp4', 'jasmine2.mp4'
     ];
 
     const galaxyMemories = document.getElementById('galaxyMemories');
@@ -1762,6 +1840,16 @@
     let memPrimed = false;
     let memTimers = [];
     let memResumeTimes = {};
+    let memMobileMode = false;
+    let memActiveSlot = 0;
+    let memMobileElapsed = 0;
+    let memMobilePreloading = false;
+    let memMobileSwapping = false;
+
+    function isMobileMemoriesMode() {
+      const coarse = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+      return window.innerWidth < 768 || coarse;
+    }
 
     function buildMemoryOrder() {
       const total = JASMINE_VIDEO_FILES.length;
@@ -1785,9 +1873,10 @@
 
     function getMemLayout() {
       const vw = window.innerWidth;
-      const visibleCols = vw < 640 ? 1 : (vw < 1100 ? 2 : 3);
+      const mobile = isMobileMemoriesMode();
+      const visibleCols = mobile ? 1 : (vw < 1100 ? 2 : 3);
       const tileW = Math.ceil(vw / visibleCols);
-      return { vw, visibleCols, tileW };
+      return { vw, visibleCols, tileW, mobile };
     }
 
     function clearTileStallTimer(tile) {
@@ -1820,7 +1909,7 @@
       return fallback;
     }
 
-    function loadTileVideo(tile, vidIdx) {
+    function loadTileVideo(tile, vidIdx, preloadMode = 'auto') {
       if (!tile || !JASMINE_VIDEO_FILES.length) return;
       const total = JASMINE_VIDEO_FILES.length;
       const normIdx = ((vidIdx % total) + total) % total;
@@ -1829,13 +1918,18 @@
       tile.vidIdx = normIdx;
       tile.needsLoad = false;
       tile.pendingSeek = seekSec;
+      tile.stuckSec = 0;
+      tile.recoverAttempts = 0;
+      tile.lastTime = -1;
       if (tile.video.getAttribute('data-file') !== file) {
         tile.video.setAttribute('data-file', file);
-        tile.video.preload = 'auto';
+        tile.video.preload = preloadMode;
         tile.video.src = encodeURI(file);
         tile.video.load();
       } else {
-        tile.video.preload = 'auto';
+        if (tile.video.preload !== 'auto' && preloadMode === 'auto') {
+          tile.video.preload = 'auto';
+        }
         if (tile.video.readyState >= 1) {
           if (seekSec > 0 && Number.isFinite(tile.video.duration) && tile.video.duration > 6
             && Math.abs(tile.video.currentTime - seekSec) > 0.3) {
@@ -1849,6 +1943,9 @@
     function playTileVideo(tile) {
       if (!memRunning || !tile || !tile.shouldPlay || document.hidden) return;
       const v = tile.video;
+      v.muted = true;
+      v.defaultMuted = true;
+      if (v.preload !== 'auto') v.preload = 'auto';
       const sid = memSessionId;
       const p = v.play();
       if (p && typeof p.then === 'function') {
@@ -1865,10 +1962,26 @@
       }
     }
 
-    function makeMemoryTile(tileW) {
+    function releaseIdleTile(tile) {
+      if (!tile) return;
+      tile.shouldPlay = false;
+      clearTileStallTimer(tile);
+      tile.stuckSec = 0;
+      tile.recoverAttempts = 0;
+      tile.video.classList.remove('active');
+      if (!tile.video.paused) tile.video.pause();
+      if (memMobileMode) tile.video.preload = 'none';
+    }
+
+    function makeMemoryTile(tileW, mobile) {
       const colEl = document.createElement('div');
       colEl.className = 'mem-col';
-      colEl.style.width = `${tileW + 1}px`;
+      if (mobile) {
+        colEl.style.width = '100%';
+        colEl.style.borderRight = 'none';
+      } else {
+        colEl.style.width = `${tileW + 1}px`;
+      }
 
       const v = document.createElement('video');
       v.className = 'mem-video';
@@ -1877,11 +1990,14 @@
       v.muted = true;
       v.defaultMuted = true;
       v.loop = true;
+      v.autoplay = true;
       v.playsInline = true;
       v.disableRemotePlayback = true;
       v.preload = 'none';
       v.setAttribute('playsinline', '');
+      v.setAttribute('webkit-playsinline', '');
       v.setAttribute('muted', '');
+      v.setAttribute('autoplay', '');
 
       colEl.appendChild(v);
       const tile = {
@@ -1892,7 +2008,10 @@
         shouldPlay: false,
         needsLoad: false,
         pendingSeek: 0,
-        stallTimer: 0
+        stallTimer: 0,
+        lastTime: -1,
+        stuckSec: 0,
+        recoverAttempts: 0
       };
 
       v.addEventListener('loadedmetadata', () => {
@@ -1913,6 +2032,8 @@
 
       v.addEventListener('playing', () => {
         clearTileStallTimer(tile);
+        tile.stuckSec = 0;
+        tile.recoverAttempts = 0;
         if (memRunning && tile.shouldPlay) v.classList.add('active');
       });
 
@@ -1929,14 +2050,20 @@
         tile.stallTimer = setTimeout(() => {
           tile.stallTimer = 0;
           if (!memRunning || sid !== memSessionId || !tile.shouldPlay || document.hidden) return;
-          if (v.paused) v.play().catch(() => { });
+          if (v.readyState >= 2 && Number.isFinite(v.currentTime)) {
+            try { v.currentTime = v.currentTime + 0.04; } catch (e) { }
+          }
+          playTileVideo(tile);
         }, 2500);
       };
       v.addEventListener('waiting', handleStall);
       v.addEventListener('stalled', handleStall);
 
       v.addEventListener('error', () => {
-        if (memRunning && tile.shouldPlay) v.classList.remove('active');
+        if (memRunning && tile.shouldPlay) {
+          v.classList.remove('active');
+          if (memMobileMode) advanceMobileMemory(true);
+        }
       });
 
       return tile;
@@ -1945,24 +2072,40 @@
     function buildMemoryTiles() {
       if (!memRow || !JASMINE_VIDEO_FILES.length) return;
       clearAllMemoryTimers();
-      for (const old of memTiles) {
-        old.shouldPlay = false;
-        old.video.classList.remove('active');
-        if (!old.video.paused) old.video.pause();
-      }
+      for (const old of memTiles) releaseIdleTile(old);
       memTiles = [];
       memRow.innerHTML = '';
 
-      const { vw, visibleCols, tileW } = getMemLayout();
+      const { vw, visibleCols, tileW, mobile } = getMemLayout();
+      memMobileMode = mobile;
       memVisibleCols = visibleCols;
       memTileW = tileW;
       memLastViewW = vw;
       memOrder = buildMemoryOrder();
       memOrderCursor = 0;
+      memActiveSlot = 0;
+      memMobileElapsed = 0;
+      memMobilePreloading = false;
+      memMobileSwapping = false;
+
+      if (mobile) {
+        // Mobile single-decoder crossfade: only 2 stacked slots, 1 actively playing at a time
+        for (let i = 0; i < 2; i++) {
+          const tile = makeMemoryTile(tileW, true);
+          tile.x = 0;
+          tile.el.style.zIndex = i === 0 ? '2' : '1';
+          tile.needsLoad = true;
+          memRow.appendChild(tile.el);
+          memTiles.push(tile);
+        }
+        memTiles[0].vidIdx = pickNextMemoryVidIdx(-1);
+        memTiles[1].vidIdx = -1;
+        return;
+      }
 
       const totalTiles = visibleCols + 2;
       for (let i = 0; i < totalTiles; i++) {
-        const tile = makeMemoryTile(tileW);
+        const tile = makeMemoryTile(tileW, false);
         tile.x = (i - 2) * tileW;
         tile.el.style.transform = `translate3d(${tile.x.toFixed(2)}px, 0, 0)`;
         tile.needsLoad = true;
@@ -1980,14 +2123,23 @@
 
     function primeGalaxyMemories() {
       if (!memRow || !JASMINE_VIDEO_FILES.length || memRunning) return;
-      const { visibleCols } = getMemLayout();
-      if (!memPrimed || !memTiles.length || visibleCols !== memVisibleCols) {
+      const { visibleCols, mobile } = getMemLayout();
+      if (!memPrimed || !memTiles.length || visibleCols !== memVisibleCols || mobile !== memMobileMode) {
         buildMemoryTiles();
       }
       memPrimed = true;
       const sid = memSessionId;
-      const queue = [...memTiles.slice(2), memTiles[1]].filter(Boolean);
 
+      if (memMobileMode) {
+        // On mobile, preload ONLY the first lightweight video (0.88 MB) to avoid decoder contention
+        const firstTile = memTiles[0];
+        if (firstTile && (firstTile.needsLoad || !firstTile.video.getAttribute('data-file'))) {
+          loadTileVideo(firstTile, firstTile.vidIdx, 'auto');
+        }
+        return;
+      }
+
+      const queue = [...memTiles.slice(2), memTiles[1]].filter(Boolean);
       function loadNext(idx) {
         if (memRunning || sid !== memSessionId || idx >= queue.length) return;
         const tile = queue[idx];
@@ -2002,18 +2154,96 @@
           tile.video.removeEventListener('loadeddata', advance);
           tile.video.removeEventListener('canplay', advance);
           clearTimeout(fallbackId);
-          const gapId = setTimeout(() => loadNext(idx + 1), 120);
+          const gapId = setTimeout(() => loadNext(idx + 1), 150);
           memTimers.push(gapId);
         };
         const fallbackId = setTimeout(advance, 1200);
         memTimers.push(fallbackId);
         tile.video.addEventListener('loadeddata', advance, { once: true });
         tile.video.addEventListener('canplay', advance, { once: true });
-        loadTileVideo(tile, tile.vidIdx);
+        loadTileVideo(tile, tile.vidIdx, idx < memVisibleCols ? 'auto' : 'metadata');
       }
 
       loadNext(0);
     }
+
+    function advanceMobileMemory(forceImmediate = false) {
+      if (!memRunning || !memMobileMode || memTiles.length < 2 || memMobileSwapping) return;
+      const sid = memSessionId;
+      const curSlot = memActiveSlot;
+      const nextSlot = 1 - curSlot;
+      const curTile = memTiles[curSlot];
+      const nextTile = memTiles[nextSlot];
+
+      memMobileSwapping = true;
+      memMobileElapsed = 0;
+      memMobilePreloading = false;
+
+      if (curTile && curTile.vidIdx >= 0) {
+        const dur = curTile.video.duration;
+        memResumeTimes[curTile.vidIdx] = (Number.isFinite(dur) && curTile.video.currentTime < dur - 4)
+          ? curTile.video.currentTime
+          : 0;
+      }
+
+      if (nextTile.needsLoad || !nextTile.video.getAttribute('data-file')) {
+        nextTile.vidIdx = pickNextMemoryVidIdx(curTile ? curTile.vidIdx : -1);
+        loadTileVideo(nextTile, nextTile.vidIdx, 'auto');
+      }
+
+      const completeSwap = () => {
+        if (!memRunning || sid !== memSessionId) return;
+        nextTile.el.style.zIndex = '2';
+        if (curTile) curTile.el.style.zIndex = '1';
+        nextTile.shouldPlay = true;
+        playTileVideo(nextTile);
+        memActiveSlot = nextSlot;
+
+        const stopOldId = setTimeout(() => {
+          if (sid !== memSessionId) return;
+          if (curTile) {
+            releaseIdleTile(curTile);
+            curTile.needsLoad = true;
+          }
+          memMobileSwapping = false;
+        }, forceImmediate ? 260 : 760);
+        memTimers.push(stopOldId);
+      };
+
+      if (forceImmediate || nextTile.video.readyState >= 2) {
+        completeSwap();
+      } else {
+        let done = false;
+        const onReady = () => {
+          if (done) return;
+          done = true;
+          nextTile.video.removeEventListener('canplay', onReady);
+          nextTile.video.removeEventListener('loadeddata', onReady);
+          clearTimeout(waitId);
+          completeSwap();
+        };
+        const waitId = setTimeout(onReady, 2200);
+        memTimers.push(waitId);
+        nextTile.video.addEventListener('canplay', onReady, { once: true });
+        nextTile.video.addEventListener('loadeddata', onReady, { once: true });
+      }
+    }
+
+    function unlockGalaxyMemoriesOnGesture() {
+      if (galaxyAudio && galaxyCanvas.style.display !== 'none' && galaxyAudio.paused) {
+        galaxyAudio.muted = false;
+        galaxyAudio.play().catch(() => { });
+      }
+      if (!memRunning || !memTiles.length || document.hidden) return;
+      for (const tile of memTiles) {
+        if (tile.shouldPlay && tile.video.paused) {
+          playTileVideo(tile);
+        }
+      }
+    }
+
+    window.addEventListener('pointerdown', unlockGalaxyMemoriesOnGesture, { passive: true });
+    window.addEventListener('touchstart', unlockGalaxyMemoriesOnGesture, { passive: true });
 
     function startGalaxyMemories() {
       if (!galaxyMemories || !memRow || !JASMINE_VIDEO_FILES.length) return;
@@ -2022,12 +2252,35 @@
       const sid = memSessionId;
       memRunning = true;
 
-      const { visibleCols } = getMemLayout();
-      if (!memPrimed || !memTiles.length || visibleCols !== memVisibleCols) {
+      const { visibleCols, mobile } = getMemLayout();
+      if (!memPrimed || !memTiles.length || visibleCols !== memVisibleCols || mobile !== memMobileMode) {
         buildMemoryTiles();
       }
       memPrimed = true;
       galaxyMemories.classList.add('show');
+
+      if (memMobileMode) {
+        memActiveSlot = 0;
+        memMobileElapsed = 0;
+        memMobilePreloading = false;
+        memMobileSwapping = false;
+        const activeTile = memTiles[0];
+        const idleTile = memTiles[1];
+        if (idleTile) {
+          releaseIdleTile(idleTile);
+          idleTile.needsLoad = true;
+          idleTile.el.style.zIndex = '1';
+        }
+        if (activeTile) {
+          activeTile.el.style.zIndex = '2';
+          activeTile.shouldPlay = true;
+          if (activeTile.needsLoad || !activeTile.video.getAttribute('data-file')) {
+            loadTileVideo(activeTile, activeTile.vidIdx, 'auto');
+          }
+          playTileVideo(activeTile);
+        }
+        return;
+      }
 
       const viewW = window.innerWidth;
       for (const tile of memTiles) {
@@ -2035,30 +2288,85 @@
         if (onScreen) {
           tile.shouldPlay = true;
           if (tile.needsLoad || !tile.video.getAttribute('data-file')) {
-            loadTileVideo(tile, tile.vidIdx);
+            loadTileVideo(tile, tile.vidIdx, 'auto');
           }
           playTileVideo(tile);
         } else if (tile.x >= -1.6 * memTileW) {
-          tile.shouldPlay = false;
-          tile.video.classList.remove('active');
-          if (!tile.video.paused) tile.video.pause();
+          releaseIdleTile(tile);
           if (tile.needsLoad || !tile.video.getAttribute('data-file')) {
             const stId = setTimeout(() => {
               if (!memRunning || sid !== memSessionId) return;
-              if (tile.needsLoad) loadTileVideo(tile, tile.vidIdx);
-            }, 700);
+              if (tile.needsLoad) loadTileVideo(tile, tile.vidIdx, 'metadata');
+            }, 900);
             memTimers.push(stId);
           }
         } else {
-          tile.shouldPlay = false;
-          tile.video.classList.remove('active');
-          if (!tile.video.paused) tile.video.pause();
+          releaseIdleTile(tile);
+        }
+      }
+    }
+
+    function checkTileStallWatchdog(tile, dt) {
+      if (!tile || !tile.shouldPlay || document.hidden) return;
+      const v = tile.video;
+      const t = Number.isFinite(v.currentTime) ? v.currentTime : 0;
+      if (tile.lastTime >= 0 && Math.abs(t - tile.lastTime) >= 0.04) {
+        tile.lastTime = t;
+        tile.stuckSec = 0;
+        tile.recoverAttempts = 0;
+        return;
+      }
+      if (tile.lastTime < 0) tile.lastTime = t;
+      tile.stuckSec += dt;
+      if (tile.stuckSec < 3.5) return;
+
+      tile.stuckSec = 0;
+      tile.recoverAttempts++;
+      if (tile.recoverAttempts === 1) {
+        if (v.readyState >= 2 && Number.isFinite(v.currentTime)) {
+          try {
+            v.currentTime = v.currentTime + 0.05;
+            tile.lastTime = v.currentTime;
+          } catch (e) { }
+        }
+        playTileVideo(tile);
+      } else if (memMobileMode) {
+        advanceMobileMemory(true);
+      } else {
+        tile.recoverAttempts = 0;
+        const curFile = v.getAttribute('data-file');
+        if (curFile) {
+          v.load();
+          playTileVideo(tile);
         }
       }
     }
 
     function updateMemoriesSlide(dt) {
       if (!memRunning || !memTiles.length) return;
+
+      if (memMobileMode) {
+        const curTile = memTiles[memActiveSlot];
+        const nextTile = memTiles[1 - memActiveSlot];
+        checkTileStallWatchdog(curTile, dt);
+
+        if (!memMobileSwapping && JASMINE_VIDEO_FILES.length > 1) {
+          const swapInterval = reducedMotionQuery.matches ? 10.5 : 7.5;
+          memMobileElapsed += dt;
+          if (!memMobilePreloading && memMobileElapsed >= swapInterval - 2.0) {
+            memMobilePreloading = true;
+            if (nextTile) {
+              nextTile.vidIdx = pickNextMemoryVidIdx(curTile ? curTile.vidIdx : -1);
+              loadTileVideo(nextTile, nextTile.vidIdx, 'auto');
+            }
+          }
+          if (memMobileElapsed >= swapInterval) {
+            advanceMobileMemory(false);
+          }
+        }
+        return;
+      }
+
       const viewW = window.innerWidth;
       const speed = reducedMotionQuery.matches ? 12 : 38;
 
@@ -2069,10 +2377,7 @@
       for (let i = 0; i < memTiles.length; i++) {
         const tile = memTiles[i];
         if (tile.x >= viewW) {
-          tile.shouldPlay = false;
-          clearTileStallTimer(tile);
-          tile.video.classList.remove('active');
-          if (!tile.video.paused) tile.video.pause();
+          releaseIdleTile(tile);
 
           const dur = tile.video.duration;
           if (tile.vidIdx >= 0) {
@@ -2093,19 +2398,18 @@
 
       for (let i = 0; i < memTiles.length; i++) {
         const tile = memTiles[i];
-        if (tile.needsLoad && tile.x >= -1.6 * memTileW) {
-          loadTileVideo(tile, tile.vidIdx);
+        if (tile.needsLoad && tile.x >= -1.2 * memTileW) {
+          loadTileVideo(tile, tile.vidIdx, tile.x >= -0.45 * memTileW ? 'auto' : 'metadata');
         }
         const onScreen = (tile.x + memTileW > -36) && (tile.x < viewW);
         if (onScreen && !tile.shouldPlay) {
           tile.shouldPlay = true;
-          if (tile.needsLoad) loadTileVideo(tile, tile.vidIdx);
+          if (tile.needsLoad) loadTileVideo(tile, tile.vidIdx, 'auto');
           playTileVideo(tile);
         } else if (!onScreen && tile.shouldPlay) {
-          tile.shouldPlay = false;
-          clearTileStallTimer(tile);
-          tile.video.classList.remove('active');
-          if (!tile.video.paused) tile.video.pause();
+          releaseIdleTile(tile);
+        } else if (onScreen && tile.shouldPlay) {
+          checkTileStallWatchdog(tile, dt);
         }
         tile.el.style.transform = `translate3d(${tile.x.toFixed(2)}px, 0, 0)`;
       }
@@ -2114,9 +2418,9 @@
     function handleMemoryResize() {
       if (!memRunning) return;
       if (Math.abs(window.innerWidth - memLastViewW) <= 60) return;
-      const { vw, visibleCols, tileW } = getMemLayout();
+      const { vw, visibleCols, tileW, mobile } = getMemLayout();
       memLastViewW = vw;
-      if (visibleCols === memVisibleCols && memTiles.length) {
+      if (!mobile && !memMobileMode && visibleCols === memVisibleCols && memTiles.length) {
         const oldW = memTileW || tileW;
         memTileW = tileW;
         for (const tile of memTiles) {
@@ -2124,7 +2428,7 @@
           tile.x = (tile.x / oldW) * tileW;
           tile.el.style.transform = `translate3d(${tile.x.toFixed(2)}px, 0, 0)`;
         }
-      } else {
+      } else if (mobile !== memMobileMode || visibleCols !== memVisibleCols) {
         memPrimed = false;
         startGalaxyMemories();
       }
@@ -2133,13 +2437,10 @@
     function stopGalaxyMemories() {
       memRunning = false;
       memSessionId++;
+      memMobileSwapping = false;
+      memMobilePreloading = false;
       clearAllMemoryTimers();
-      for (const tile of memTiles) {
-        tile.shouldPlay = false;
-        clearTileStallTimer(tile);
-        tile.video.classList.remove('active');
-        if (!tile.video.paused) tile.video.pause();
-      }
+      for (const tile of memTiles) releaseIdleTile(tile);
       if (galaxyMemories) galaxyMemories.classList.remove('show');
     }
 
@@ -2456,7 +2757,7 @@
     let againShown = false;
 
     function resizeGalaxyCanvas() {
-      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const dpr = Math.min(window.devicePixelRatio || 1, window.innerWidth < 768 ? 1.5 : 2);
       gWidth = window.innerWidth;
       gHeight = window.innerHeight;
       galaxyCanvas.width = Math.floor(gWidth * dpr);
@@ -5665,6 +5966,7 @@
 
     function startShooterGame() {
       unlockGalaxyAudio();
+      unlockGalaxyMemoriesOnGesture();
       forceCloseGameOverDialog();
       stopGalaxyMemories();
       primeGalaxyMemories();
@@ -5770,12 +6072,13 @@
       resizeGalaxyCanvas();
       const burstCx = coupleOrigin ? coupleOrigin.x : gWidth / 2;
       const burstCy = coupleOrigin ? coupleOrigin.y : gHeight / 2;
+      const pScale = window.innerWidth < 768 ? 0.55 : 1;
       const sampled = [];
 
       if (coupleOrigin) {
         sampleRectParticles(
           { left: burstCx - 22, top: burstCy - 34, width: 28, height: 52 },
-          650,
+          Math.round(650 * pScale),
           ['#38b6ff', '#1d4ed8', '#bae6fd', '#ffd5b8', '#ffffff'],
           burstCx,
           burstCy,
@@ -5784,7 +6087,7 @@
         );
         sampleRectParticles(
           { left: burstCx - 6, top: burstCy - 33, width: 26, height: 50 },
-          650,
+          Math.round(650 * pScale),
           ['#ff4da6', '#ff69b4', '#db2777', '#fbcfe8', '#ffd5b8'],
           burstCx,
           burstCy,
@@ -5793,7 +6096,8 @@
         );
         if (coupleOrigin.heartCx != null) {
           const heartPalette = ['#ff4d79', '#ff85a2', '#ffd166', '#ffe5ec', '#ffffff'];
-          for (let i = 0; i < 420; i++) {
+          const heartEdgeCount = Math.round(420 * pScale);
+          for (let i = 0; i < heartEdgeCount; i++) {
             const side = i % 2 === 0 ? -1 : 1;
             const prog = Math.random();
             const pt = getHeartPointAt(prog, side, coupleOrigin.heartCx, coupleOrigin.heartCy, coupleOrigin.heartScale);
@@ -5809,7 +6113,7 @@
               width: 188 * coupleOrigin.heartScale,
               height: 164 * coupleOrigin.heartScale
             },
-            220,
+            Math.round(220 * pScale),
             ['#ff2a66', '#ff7597', '#ffd166', '#ffe5ec'],
             burstCx,
             burstCy,
@@ -5818,7 +6122,7 @@
         } else {
           sampleHeartParticles(
             { left: burstCx - 42, top: burstCy - 54, width: 84, height: 76 },
-            500,
+            Math.round(500 * pScale),
             ['#ff2a66', '#ff7597', '#ffd166', '#ffe5ec', '#ffffff'],
             burstCx,
             burstCy,
@@ -5827,12 +6131,12 @@
         }
       } else {
         letterEls.forEach((el) => {
-          sampleRectParticles(el.getBoundingClientRect(), 45, ['#ffd166', '#ff5c8a', '#ff9ebb', '#ffffff'], burstCx, burstCy, sampled, 0.05);
+          sampleRectParticles(el.getBoundingClientRect(), Math.round(45 * pScale), ['#ffd166', '#ff5c8a', '#ff9ebb', '#ffffff'], burstCx, burstCy, sampled, 0.05);
         });
-        sampleHeartParticles(heartWrap.getBoundingClientRect(), 900, ['#ff2a66', '#ff7597', '#ffb3c6', '#ffd166'], burstCx, burstCy, sampled);
-        sampleRectParticles(loveText.getBoundingClientRect(), 320, ['#ffc2d4', '#ff85a2', '#ffffff'], burstCx, burstCy, sampled, 0.22);
-        sampleRectParticles(nameText.getBoundingClientRect(), 320, ['#ffd166', '#ffe9b0', '#ffb84d'], burstCx, burstCy, sampled, 0.22);
-        sampleRectParticles(underline.getBoundingClientRect(), 60, ['#ffd166', '#ffe9b0', '#ff85a2'], burstCx, burstCy, sampled, 0);
+        sampleHeartParticles(heartWrap.getBoundingClientRect(), Math.round(900 * pScale), ['#ff2a66', '#ff7597', '#ffb3c6', '#ffd166'], burstCx, burstCy, sampled);
+        sampleRectParticles(loveText.getBoundingClientRect(), Math.round(320 * pScale), ['#ffc2d4', '#ff85a2', '#ffffff'], burstCx, burstCy, sampled, 0.22);
+        sampleRectParticles(nameText.getBoundingClientRect(), Math.round(320 * pScale), ['#ffd166', '#ffe9b0', '#ffb84d'], burstCx, burstCy, sampled, 0.22);
+        sampleRectParticles(underline.getBoundingClientRect(), Math.round(60 * pScale), ['#ffd166', '#ffe9b0', '#ff85a2'], burstCx, burstCy, sampled, 0);
       }
 
       galaxyParticles = sampled;
